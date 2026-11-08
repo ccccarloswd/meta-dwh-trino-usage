@@ -7,6 +7,7 @@ from meta_dwh.generate_events import generate_events, write_raw_events
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2] # The root of the project
 SQL_DIR = PROJECT_ROOT / "sql"
+SEEDS_DIR = PROJECT_ROOT / "seeds"
 DB_PATH = PROJECT_ROOT / "data" / "meta_dwh.duckdb"
 
 # Demo parameters
@@ -30,6 +31,11 @@ def run_sql_folder(con: duckdb.DuckDBPyConnection, folder: Path) -> None:
         con.execute(sql_file.read_text())
 
 
+def load_team_assignments(con: duckdb.DuckDBPyConnection, csv_path: Path) -> None:
+    """Replace raw_team_assignments with the content of the HR export."""
+    con.execute("DELETE FROM raw_team_assignments")
+    con.execute("INSERT INTO raw_team_assignments SELECT * FROM read_csv(?)", [str(csv_path)])
+
 def main() -> None:
     """Rebuild the local Meta DWH from scratch: tables, simulated ingestion, transforms."""
     DB_PATH.unlink(missing_ok=True)  # delete the old database file, if any
@@ -37,6 +43,7 @@ def main() -> None:
     run_sql_folder(con, SQL_DIR / "ddl")
     rows = generate_events(DEMO_SEED, DEMO_START_DATE, DEMO_DAYS, DEMO_EVENTS_PER_DAY)
     write_raw_events(con, rows)
+    load_team_assignments(con, SEEDS_DIR / "team_assignments.csv")
     run_sql_folder(con, SQL_DIR / "transform")
     print(con.sql("SHOW TABLES"))
     con.close()
