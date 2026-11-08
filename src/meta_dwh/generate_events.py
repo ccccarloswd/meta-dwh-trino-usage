@@ -5,6 +5,8 @@ Plays the role of Trino's event listener.
 
 import random
 import string
+import json
+import duckdb
 from datetime import date, datetime, time, timedelta, timezone
 
 
@@ -147,6 +149,11 @@ def make_event(rng: random.Random, query_id: str, end_time: datetime) -> dict:
         "failureInfo": failure_info,
     }
 
+def _to_naive_utc(moment: datetime) -> datetime:
+
+    """Return moment as a naive UTC datetime"""
+
+    return moment.astimezone(timezone.utc).replace(tzinfo=None)
 
 def generate_events(seed: int, start_date: date, days: int, events_per_day: int) -> list[dict]:
 
@@ -191,3 +198,18 @@ def generate_events(seed: int, start_date: date, days: int, events_per_day: int)
 
     rows.sort(key=lambda r: r["ingested_at"])
     return rows
+
+def write_raw_events(con: duckdb.DuckDBPyConnection, rows: list[dict]) -> None:
+    """Insert generated rows into raw_query_events in a single bulk statement."""
+    con.executemany(
+        "INSERT INTO raw_query_events VALUES (?, ?, ?, ?)",
+        [
+            (
+                row["query_id"],
+                _to_naive_utc(row["query_end_time"]),
+                _to_naive_utc(row["ingested_at"]),
+                json.dumps(row["payload"]),
+            )
+            for row in rows
+        ],
+    )  
