@@ -17,3 +17,6 @@ data/
 # Editor settings
 .idea/
 .vscode/
+
+# Personal working notes
+DESIGN_NOTES.md

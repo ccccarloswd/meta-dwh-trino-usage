@@ -1,7 +1,7 @@
 [project]
 name = "meta-dwh"
 version = "0.1.0"
-description = "Meta DWH: modelo de datos y pipeline para analizar el uso de tablas Iceberg a partir de eventos de Trino"
+description = "Meta DWH: data model and pipeline to analyze Iceberg table usage from Trino query events"
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.1",
