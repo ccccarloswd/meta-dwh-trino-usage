@@ -4,6 +4,8 @@ Plays the role of Trino's event listener.
 """
 
 import random
+from datetime import datetime, timedelta, timezone
+
 
 # Users that run queries, including edge cases as service accounts (svc) or external contractors (ext)
 USERS: list[str] = [
@@ -50,12 +52,27 @@ SOURCES: list[str] = [
     "airflow",
 ]
 
+BYTES_PER_CPU_SECOND = 100000000 # 1 cpu second per each 100 MB scanned
+MIN_PARALLELISM = 4 # limit number of cores working at the same time
+MAX_PARALLELISM = 64
+MAX_QUEUED_SECONDS = 5.0 # max time waiting
+TABLE_COUNT_WEIGHTS = [70,20,10] # weights so the amount of tables read hasn't the same probability
+FAILURE_RATE = 0.05 # probability for an event to fail
+WRITE_RATE = 0.1 # probability for an event to write in a table
+# Names of the possible errors
+ERROR_NAMES: list[str] = [
+    "EXCEEDED_LOCAL_MEMORY_LIMIT",
+    "EXCEEDED_TIME_LIMIT",
+    "EXCEEDED_CPU_LIMIT",
+    "QUERY_REJECTED",
+]
 
-def make_event(rng: random.Random, query_id: str) -> dict:
-    """Create one synthetic Trino QueryCompletedEvent."""
+def make_event(rng: random.Random, query_id: str, end_time: datetime) -> dict:
+    """Create one Trino QueryCompletedEvent that finished at end_time (UTC)."""
+
     user = rng.choice(USERS)
     source = rng.choice(SOURCES)
-    n_tables = rng.randint(1, 3)
+    n_tables = rng.choices([1, 2, 3], weights=TABLE_COUNT_WEIGHTS)[0]
     tables = rng.sample(list(TABLES), n_tables)
 
     inputs = []
@@ -69,8 +86,54 @@ def make_event(rng: random.Random, query_id: str) -> dict:
             "physicalInputBytes": input_bytes,
         })
 
+    # Resources: coherent with the amount of data read.
+    total_bytes = sum(table_input["physicalInputBytes"] for table_input in inputs)
+    cpu_seconds = total_bytes / BYTES_PER_CPU_SECOND * rng.uniform(0.5, 2.0)
+
+    query_state = "FINISHED"
+    failure_info = None
+
+    if(rng.random() < FAILURE_RATE):
+        query_state = "FAILED"
+        failure_info = {"errorCode": {"name": rng.choice(ERROR_NAMES)}}
+        cpu_seconds = cpu_seconds * rng.uniform(0.1,0.9)
+    
+    parallelism = rng.randint(MIN_PARALLELISM, MAX_PARALLELISM)
+    wall_seconds = cpu_seconds / parallelism
+    queued_seconds = rng.uniform(0, MAX_QUEUED_SECONDS)
+    peak_memory_bytes = int(total_bytes * rng.uniform(0.01, 0.1))
+
+    # Times derived backwards from the end, so create <= start <= end always holds.
+    execution_start = end_time - timedelta(seconds=wall_seconds)
+    create_time = execution_start - timedelta(seconds=queued_seconds)
+
+    # Failed queries never write, so only finished ones can have an output.
+    output = None
+    written_bytes = 0
+    
+    if rng.random() < WRITE_RATE and query_state == "FINISHED":
+        target = rng.choice([t for t in TABLES if t not in tables])
+        catalog, schema, name = target.split(".")
+        output = {"catalogName": catalog, "schema": schema, "table": name}
+        written_bytes = int(total_bytes * rng.uniform(0.05, 0.5))
+
+
+
+
     return {
-        "metadata": {"queryId": query_id, "queryState": "FINISHED"},
+        "metadata": {"queryId": query_id, "queryState": query_state},
         "context": {"user": user, "source": source},
-        "ioMetadata": {"inputs": inputs, "output": None},
+        "createTime": create_time.isoformat(),
+        "executionStartTime": execution_start.isoformat(),
+        "endTime": end_time.isoformat(),
+        "statistics": {
+            "cpuTime": round(cpu_seconds, 3),
+            "wallTime": round(wall_seconds, 3),
+            "queuedTime": round(queued_seconds, 3),
+            "peakUserMemoryBytes": peak_memory_bytes,
+            "physicalInputBytes": total_bytes,
+            "writtenBytes": written_bytes,  
+        },
+        "ioMetadata": {"inputs": inputs, "output": output},
+        "failureInfo": failure_info,
     }
