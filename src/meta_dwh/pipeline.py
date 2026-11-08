@@ -12,7 +12,7 @@ DB_PATH = PROJECT_ROOT / "data" / "meta_dwh.duckdb"
 
 # Demo parameters
 DEMO_SEED = 42
-DEMO_START_DATE = date(2026,10,20)
+DEMO_START_DATE = date(2026, 10, 19)
 DEMO_DAYS = 21
 DEMO_EVENTS_PER_DAY = 200
 
@@ -36,6 +36,12 @@ def load_team_assignments(con: duckdb.DuckDBPyConnection, csv_path: Path) -> Non
     con.execute("DELETE FROM raw_team_assignments")
     con.execute("INSERT INTO raw_team_assignments SELECT * FROM read_csv(?)", [str(csv_path)])
 
+def show_analysis(con: duckdb.DuckDBPyConnection, folder: Path) -> None:
+    """Run every example query in `folder` and print its result."""
+    for sql_file in sorted(folder.glob("*.sql")):
+        print(f"\n== {sql_file.name}")
+        print(con.sql(sql_file.read_text()))
+
 def main() -> None:
     """Rebuild the local Meta DWH from scratch: tables, simulated ingestion, transforms."""
     DB_PATH.unlink(missing_ok=True)  # delete the old database file, if any
@@ -45,7 +51,7 @@ def main() -> None:
     write_raw_events(con, rows)
     load_team_assignments(con, SEEDS_DIR / "team_assignments.csv")
     run_sql_folder(con, SQL_DIR / "transform")
-    print(con.sql("SHOW TABLES"))
+    show_analysis(con, SQL_DIR / "analysis")
     con.close()
 
 
