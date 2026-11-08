@@ -1,6 +1,9 @@
-""" Synthetic Trino event generator
+"""Synthetic Trino event generator.
 
-Plays the role of Trino's event listener"""
+Plays the role of Trino's event listener.
+"""
+
+import random
 
 # Users that run queries, including edge cases as service accounts (svc) or external contractors (ext)
 USERS: list[str] = [
@@ -46,3 +49,28 @@ SOURCES: list[str] = [
     "dbt",
     "airflow",
 ]
+
+
+def make_event(rng: random.Random, query_id: str) -> dict:
+    """Create one synthetic Trino QueryCompletedEvent."""
+    user = rng.choice(USERS)
+    source = rng.choice(SOURCES)
+    n_tables = rng.randint(1, 3)
+    tables = rng.sample(list(TABLES), n_tables)
+
+    inputs = []
+    for table in tables:
+        catalog, schema, name = table.split(".")
+        input_bytes = int(TABLES[table] * rng.uniform(0.5, 1.5))
+        inputs.append({
+            "catalogName": catalog,
+            "schema": schema,
+            "table": name,
+            "physicalInputBytes": input_bytes,
+        })
+
+    return {
+        "metadata": {"queryId": query_id, "queryState": "FINISHED"},
+        "context": {"user": user, "source": source},
+        "ioMetadata": {"inputs": inputs, "output": None},
+    }
