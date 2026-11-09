@@ -1,4 +1,4 @@
--- Q4 (history): weekly distinct users per table, counted exactly per week from the fact.
+-- Question: weekly distinct users per table, counted exactly per week from the fact.
 SELECT
     DATE_TRUNC('week', query_date) AS week_start,
     full_table_name,

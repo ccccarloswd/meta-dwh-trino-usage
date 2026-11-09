@@ -59,7 +59,7 @@ BYTES_PER_CPU_SECOND = 100000000 # 1 cpu second per each 100 MB scanned
 MIN_PARALLELISM = 4 # limit number of cores working at the same time
 MAX_PARALLELISM = 64
 MAX_QUEUED_SECONDS = 5.0 # max time waiting
-TABLE_COUNT_WEIGHTS = [70,20,10] # weights so the amount of tables read hasn't the same probability
+TABLE_COUNT_WEIGHTS = [70,20,10] # weights for reading 1, 2 or 3 tables
 FAILURE_RATE = 0.05 # probability for an event to fail
 WRITE_RATE = 0.1 # probability for an event to write in a table
 # Names of the possible errors
